@@ -1,11 +1,11 @@
 # Tahap 1: dependensi
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # Tahap 2: build
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -19,7 +19,7 @@ ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN npm run build
 
 # Tahap 3: image akhir yang kecil
-FROM node:20-alpine AS run
+FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080

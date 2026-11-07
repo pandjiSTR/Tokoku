@@ -18,7 +18,7 @@ availableSecrets:
 steps:
   # 1. Install dependensi dan cek tipe (lint dan tes ditambahkan di M1)
   - id: check
-    name: node:20-alpine
+    name: node:22-alpine
     entrypoint: sh
     args: ['-c', 'npm ci && npm run typecheck']
 
@@ -42,7 +42,7 @@ steps:
 
   # 4. Migrasi skema Drizzle (pipeline berhenti jika gagal)
   - id: migrate
-    name: node:20-alpine
+    name: node:22-alpine
     entrypoint: sh
     secretEnv: [DATABASE_URL]
     args: ['-c', 'npm ci && npx drizzle-kit migrate']
