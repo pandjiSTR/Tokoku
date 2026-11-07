@@ -62,6 +62,7 @@ steps:
       - --min-instances=0
       - --max-instances=2
       - --memory=512Mi
+      - --service-account=tokoku-run@$PROJECT_ID.iam.gserviceaccount.com
       - --set-secrets=DATABASE_URL=database-url:latest
       - --set-env-vars=NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}
 
