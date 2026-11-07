@@ -1,8 +1,9 @@
-# Pipeline Tokoku. Dijalankan oleh trigger GitHub (push ke main).
-# Variabel _REGION, _SERVICE, _REPO, _SUPABASE_URL, _SUPABASE_ANON_KEY diatur di trigger.
+# Pipeline Tokoku (deploy ke VM Compute Engine). Dijalankan oleh trigger GitHub (push ke main).
+# Variabel diatur di trigger: _SUPABASE_URL, _SUPABASE_ANON_KEY (nilai publik).
 substitutions:
   _REGION: us-central1
-  _SERVICE: tokoku
+  _ZONE: us-central1-a
+  _VM_NAME: tokoku-vm
   _REPO: tokoku
   _SUPABASE_URL: ''
   _SUPABASE_ANON_KEY: ''
@@ -16,7 +17,7 @@ availableSecrets:
       env: DATABASE_URL
 
 steps:
-  # 1. Install dependensi dan cek tipe (lint dan tes ditambahkan di M1)
+  # 1. Install dependensi dan cek tipe
   - id: check
     name: node:22-alpine
     entrypoint: sh
@@ -47,24 +48,18 @@ steps:
     secretEnv: [DATABASE_URL]
     args: ['-c', 'npm ci && npx drizzle-kit migrate']
 
-  # 5. Deploy revision baru ke Cloud Run
+  # 5. Deploy: beri tahu VM tag image baru lewat metadata.
+  #    Skrip tokoku-deploy di VM (cek tiap 30 detik) menarik image dan menjalankan ulang container.
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
-      - run
-      - deploy
-      - ${_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/app:$SHORT_SHA
-      - --region=${_REGION}
-      - --platform=managed
-      - --allow-unauthenticated
-      - --min-instances=0
-      - --max-instances=2
-      - --memory=512Mi
-      - --service-account=tokoku-run@$PROJECT_ID.iam.gserviceaccount.com
-      - --set-secrets=DATABASE_URL=database-url:latest
-      - --set-env-vars=NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}
+      - compute
+      - instances
+      - add-metadata
+      - ${_VM_NAME}
+      - --zone=${_ZONE}
+      - --metadata=image-tag=$SHORT_SHA
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/app:$SHORT_SHA
