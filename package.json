@@ -9,7 +9,10 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "storage:setup": "node --env-file=.env scripts/storage-setup.mjs"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
@@ -17,16 +20,25 @@
     "@supabase/supabase-js": "^2.45.0",
     "drizzle-orm": "^0.36.0",
     "next": "^15.0.0",
+    "nodemailer": "^10.4.0",
     "postgres": "^3.4.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
+    "@eslint/eslintrc": "^3.3.7",
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "drizzle-kit": "^0.28.0",
-    "typescript": "^5.6.0"
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.29",
+    "typescript": "^5.6.0",
+    "vitest": "^5.1.0"
   }
 }

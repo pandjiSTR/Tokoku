@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
-import { db } from '@/db';
+import { asUser } from '@/db';
 import { stores, storeMembers } from '@/db/schema';
-import { createClient } from '@/lib/supabase/server';
+import { getUser } from '@/lib/session';
 import { Brand } from '@/components/Brand';
 import { Alert } from '@/components/Alert';
 import { logout } from '../login/actions';
@@ -16,15 +15,14 @@ const roleLabel = { owner: 'Pemilik', staff: 'Staf' } as const;
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const user = await getUser();
 
-  const myStores = await db
-    .select({ id: stores.id, name: stores.name, slug: stores.slug, role: storeMembers.role })
-    .from(storeMembers)
-    .innerJoin(stores, eq(stores.id, storeMembers.storeId))
-    .where(eq(storeMembers.userId, user.id));
+  const myStores = await asUser(user.id, (tx) =>
+    tx.select({ id: stores.id, name: stores.name, slug: stores.slug, role: storeMembers.role })
+      .from(storeMembers)
+      .innerJoin(stores, eq(stores.id, storeMembers.storeId))
+      .where(eq(storeMembers.userId, user.id)),
+  );
 
   return (
     <div className="page">
@@ -32,7 +30,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <div className="topbar-inner">
           <Brand href="/dashboard" />
           <span className="spacer" />
-          <span className="muted small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>{user.email}</span>
+          <span className="muted small ellipsis">{user.email}</span>
           <form action={logout}><button type="submit" className="btn btn-ghost btn-sm">Keluar</button></form>
         </div>
       </header>
@@ -59,7 +57,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                   <span className="muted small">/s/{s.slug}</span>
                   <span className="badge" style={{ alignSelf: 'flex-start' }}>{roleLabel[s.role]}</span>
                 </div>
-                <Link href={`/s/${s.slug}`} className="btn btn-secondary btn-sm">Lihat toko</Link>
+                <div className="stack" style={{ gap: 8 }}>
+                  <Link href={`/dashboard/${s.slug}`} className="btn btn-sm">Kelola</Link>
+                  <Link href={`/s/${s.slug}`} className="btn btn-secondary btn-sm">Lihat toko</Link>
+                </div>
               </div>
             ))}
           </section>

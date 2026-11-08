@@ -8,6 +8,6 @@ export function isValidSlug(slug: string): boolean {
   return SLUG_RE.test(slug) && !RESERVED_SLUGS.has(slug);
 }
 
-export function toSlug(input: string): string {
-  return input.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+export function toSlug(input: string, max = 30): string {
+  return input.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/g, '');
 }

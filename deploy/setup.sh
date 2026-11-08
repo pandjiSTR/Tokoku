@@ -43,15 +43,23 @@ PROJECT=$(curl -sf -H "$H" "$MD/project/project-id")
 TOKEN=$(curl -sf -H "$H" "$MD/instance/service-accounts/default/token" \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin "$REGION-docker.pkg.dev" >/dev/null
-DB=$(curl -sf -H "Authorization: Bearer $TOKEN" \
-  "https://secretmanager.googleapis.com/v1/projects/$PROJECT/secrets/database-url/versions/latest:access" \
-  | python3 -c 'import sys,json,base64;print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode(),end="")')
+secret() {
+  curl -sf -H "Authorization: Bearer $TOKEN" \
+    "https://secretmanager.googleapis.com/v1/projects/$PROJECT/secrets/$1/versions/latest:access" \
+    | python3 -c 'import sys,json,base64;print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode(),end="")' || true
+}
+DB=$(secret database-url)
+APP_ENV=$(secret app-env)
+if [ -z "$DB" ]; then echo "Secret database-url tidak terbaca"; exit 1; fi
 
 image() { echo "$REGION-docker.pkg.dev/$PROJECT/tokoku/app:$1"; }
 start() {
   docker rm -f tokoku >/dev/null 2>&1 || true
+  ENVF=$(mktemp); chmod 600 "$ENVF"
+  printf '%s\n' "$APP_ENV" > "$ENVF"
   docker run -d --name tokoku --restart unless-stopped -p 80:8080 \
-    --memory=600m -e DATABASE_URL="$DB" "$(image "$1")" >/dev/null
+    --memory=600m --env-file "$ENVF" -e DATABASE_URL="$DB" "$(image "$1")" >/dev/null
+  rm -f "$ENVF"
 }
 healthy() {
   for _ in $(seq 1 20); do

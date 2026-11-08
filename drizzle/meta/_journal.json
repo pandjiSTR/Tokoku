@@ -8,6 +8,62 @@
       "when": 1793990440017,
       "tag": "0000_crazy_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794081814102,
+      "tag": "0001_overjoyed_maximus",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794081831347,
+      "tag": "0002_rls_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794081832227,
+      "tag": "0003_seed_regions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794083235677,
+      "tag": "0004_glorious_blizzard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794083236547,
+      "tag": "0005_catalog_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794118384635,
+      "tag": "0006_cynical_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794118385291,
+      "tag": "0007_seed_districts",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794118385962,
+      "tag": "0008_checkout_security",
+      "breakpoints": true
     }
   ]
 }

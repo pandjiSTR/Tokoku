@@ -1,0 +1,17 @@
+# Dijalankan pada setiap Pull Request ke main: hanya memeriksa, tidak mendeploy.
+substitutions:
+  _SUPABASE_URL: 'https://x.supabase.co'
+  _SUPABASE_ANON_KEY: 'x'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: verify
+    name: node:22-alpine
+    entrypoint: sh
+    env:
+      - NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}
+      - DATABASE_URL=postgresql://build:build@localhost:5432/build
+    args: ['-c', 'npm ci && npm run typecheck && npm run lint && npm test && npm run build']
