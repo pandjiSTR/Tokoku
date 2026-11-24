@@ -14,9 +14,9 @@ function admin() {
  * Kunci service role melewati semua kebijakan Supabase, jadi dipakai HANYA di server dan
  * HANYA setelah keanggotaan toko diperiksa. Path selalu dibuat server: {store_id}/{product_id}/{uuid}.webp
  */
-export async function uploadImage(path: string, data: Buffer) {
+export async function uploadImage(path: string, data: Buffer, contentType: 'image/webp' | 'image/png' = 'image/webp') {
   const { error } = await admin().storage.from(IMAGE_BUCKET).upload(path, data, {
-    contentType: 'image/webp', cacheControl: '31536000', upsert: false,
+    contentType, cacheControl: '31536000', upsert: false,
   });
   if (error) throw new Error(`Upload gagal: ${error.message}`);
 }

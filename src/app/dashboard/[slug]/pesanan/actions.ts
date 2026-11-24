@@ -5,7 +5,9 @@ import { asUser } from '@/db';
 import { auditLogs, orders } from '@/db/schema';
 import { getMyStore } from '@/lib/session';
 import { isUuid } from '@/lib/product-form';
-import { buyerStatus } from '@/lib/messages';
+import { buyerFeeChanged, buyerStatus } from '@/lib/messages';
+import { errCode } from '@/lib/pg';
+import { parseRupiah } from '@/lib/validation';
 import { notify } from '@/lib/notify';
 
 type To = 'paid' | 'rejected' | 'processing' | 'shipped' | 'completed' | 'cancelled';
@@ -56,4 +58,35 @@ export async function rejectPayment(slug: string, id: string, formData: FormData
     redirect(`/dashboard/${slug}/pesanan/${id}?error=${encodeURIComponent('Alasan penolakan wajib diisi (3-300 karakter).')}`);
   }
   await move(slug, id, 'rejected', reason);
+}
+
+export async function updateShippingFee(slug: string, orderId: string, formData: FormData) {
+  const { user, store } = await getMyStore(slug);
+  if (!isUuid(orderId)) notFound();
+  const back = `/dashboard/${slug}/pesanan/${orderId}`;
+  const enc = encodeURIComponent;
+  const fee = parseRupiah(String(formData.get('fee') ?? ''), 10_000_000);
+  if (fee === undefined || fee === null) redirect(`${back}?error=${enc('Ongkir harus berupa angka rupiah, misalnya 15000.')}`);
+
+  let result: { kind: 'ok'; order: typeof orders.$inferSelect; oldTotal: number } | { kind: 'state' | 'conflict' | 'denied' };
+  try {
+    result = await asUser(user.id, async (tx) => {
+      const [o] = await tx.select().from(orders).where(and(eq(orders.storeId, store.id), eq(orders.id, orderId))).limit(1);
+      if (!o || o.status !== 'pending_payment') return { kind: 'state' as const };
+      const [row] = await tx.update(orders).set({ shippingFee: fee, total: o.subtotal + fee + o.uniqueCode })
+        .where(and(eq(orders.storeId, store.id), eq(orders.id, orderId), eq(orders.status, 'pending_payment'))).returning();
+      if (!row) return { kind: 'state' as const };
+      await tx.insert(auditLogs).values({ storeId: store.id, userId: user.id, action: 'order.fee_changed', meta: { orderId, from: o.shippingFee, to: fee } });
+      return { kind: 'ok' as const, order: row, oldTotal: o.total };
+    });
+  } catch (e) {
+    result = { kind: errCode(e) === '23505' ? 'conflict' : 'denied' };
+  }
+  if (result.kind === 'conflict') redirect(`${back}?error=${enc('Nominal total bertabrakan dengan pesanan aktif lain. Coba ongkir yang sedikit berbeda.')}`);
+  if (result.kind !== 'ok') redirect(`${back}?error=${enc('Ongkir hanya dapat diubah pada pesanan yang belum dibayar.')}`);
+
+  const o = result.order;
+  const m = buyerFeeChanged(store.name, { orderNumber: o.orderNumber, total: o.total, buyerName: o.buyerName }, result.oldTotal);
+  await notify({ storeId: store.id, orderId: o.id, to: o.buyerEmail, template: 'buyer_fee_changed', ...m });
+  redirect(`${back}?ok=fee`);
 }

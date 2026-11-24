@@ -24,3 +24,16 @@ export const statusLabel: Record<string, string> = {
   pending_payment: 'Menunggu bayar', awaiting_verification: 'Perlu verifikasi', paid: 'Dibayar', processing: 'Diproses',
   shipped: 'Dikirim', completed: 'Selesai', expired: 'Kedaluwarsa', rejected: 'Ditolak', cancelled: 'Dibatalkan',
 };
+
+/** "2026-11-08T14:30" (input datetime-local, dianggap WIB) -> Date. Kosong -> null. Tidak valid -> undefined. */
+export function parseWibInput(v: string): Date | null | undefined {
+  if (!v) return null;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) return undefined;
+  const d = new Date(`${v}:00+07:00`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/** Date -> nilai untuk input datetime-local dalam WIB. */
+export function toWibInput(d: Date | null | undefined): string {
+  return d ? new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 16) : '';
+}

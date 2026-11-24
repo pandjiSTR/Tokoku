@@ -43,3 +43,11 @@ export function parseRupiah(raw: string, max = 1_000_000_000): number | null | u
   const n = Number(v.replace(/\./g, ''));
   return Number.isSafeInteger(n) && n <= max ? n : undefined;
 }
+
+/** "2,5" atau "2.5" -> 2.5 (maksimal 2 desimal). Tidak valid atau di luar rentang -> undefined. */
+export function parseDecimal(raw: string, min: number, max: number): number | undefined {
+  const v = raw.trim().replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return undefined;
+  const n = Number(v);
+  return n >= min && n <= max ? n : undefined;
+}

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { createClient } from '@/lib/supabase/server';
+import { rateGuard, TOO_MANY } from '@/lib/rate-limit';
 
 const schema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -12,6 +13,7 @@ const schema = z.object({
 });
 
 export async function register(formData: FormData) {
+  if (!(await rateGuard('register', 5, 3600)).ok) redirect(`/register?error=${encodeURIComponent(TOO_MANY)}`);
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect('/register?error=Data+tidak+valid.+Password+minimal+8+karakter.');
   const { name, email, password } = parsed.data;

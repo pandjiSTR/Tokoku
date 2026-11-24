@@ -37,3 +37,17 @@ export async function compressImage(input: Buffer, maxSide = DEFAULT_SIDE): Prom
     throw new ImageError('File bukan gambar yang valid.');
   }
 }
+
+/** Favicon: persegi 64x64 PNG (didukung semua peramban), dari JPG/PNG/WebP. */
+export async function compressFavicon(input: Buffer): Promise<Buffer> {
+  if (input.length === 0 || input.length > MAX_UPLOAD_BYTES) throw new ImageError('Ukuran gambar maksimal 5 MB.');
+  try {
+    const img = sharp(input, { limitInputPixels: 25_000_000, failOn: 'error' });
+    const meta = await img.metadata();
+    if (!meta.format || !ALLOWED.has(meta.format)) throw new ImageError('Format gambar harus JPG, PNG, atau WebP.');
+    return await img.rotate().resize(64, 64, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer();
+  } catch (e) {
+    if (e instanceof ImageError) throw e;
+    throw new ImageError('File bukan gambar yang valid.');
+  }
+}

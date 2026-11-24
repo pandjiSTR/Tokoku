@@ -64,6 +64,27 @@
       "when": 1794118385962,
       "tag": "0008_checkout_security",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794204111856,
+      "tag": "0009_giant_doorman",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794204112657,
+      "tag": "0010_m4_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795238298354,
+      "tag": "0011_m5_expire_all",
+      "breakpoints": true
     }
   ]
 }

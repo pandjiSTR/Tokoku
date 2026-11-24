@@ -42,3 +42,10 @@ export function buyerOrderCreated(storeName: string, o: O, statusUrl: string | n
     text: `Halo ${o.buyerName},\n\nPesanan ${o.orderNumber} berhasil dibuat. Transfer tepat sebesar ${formatRupiah(o.total)} (jangan dibulatkan) lalu unggah bukti pembayaran.${statusUrl ? `\n\nInstruksi dan status pesanan: ${statusUrl}\nSimpan tautan ini, karena hanya dengan tautan ini pesanan dapat dilihat.` : ''}\n\n${storeName}`,
   };
 }
+
+export function buyerFeeChanged(storeName: string, o: O, oldTotal: number): Msg {
+  return {
+    subject: `[${storeName}] Total pesanan ${o.orderNumber} berubah`,
+    text: `Halo ${o.buyerName},\n\nOngkir pesanan ${o.orderNumber} disesuaikan oleh toko. Total pembayaran berubah dari ${formatRupiah(oldTotal)} menjadi ${formatRupiah(o.total)}. Mohon transfer sesuai total terbaru.\n\nBuka tautan pesanan yang Anda simpan untuk melihat rincian.\n\n${storeName}`,
+  };
+}

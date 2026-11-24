@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  pgTable, pgEnum, uuid, text, timestamp, uniqueIndex, index, jsonb, primaryKey, integer, boolean, check,
+  pgTable, pgEnum, uuid, text, timestamp, uniqueIndex, index, jsonb, primaryKey, integer, boolean, check, doublePrecision, numeric,
 } from 'drizzle-orm/pg-core';
 
 export const memberRole = pgEnum('member_role', ['owner', 'staff']);
@@ -37,6 +37,8 @@ export const stores = pgTable('stores', {
   email: text('email'),
   waGreeting: text('wa_greeting'),
   orderSeq: integer('order_seq').notNull().default(1000),
+  logoPath: text('logo_path'),
+  faviconPath: text('favicon_path'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -146,6 +148,7 @@ export const orderStatus = pgEnum('order_status', [
   'pending_payment', 'awaiting_verification', 'paid', 'processing', 'shipped', 'completed', 'expired', 'rejected', 'cancelled',
 ]);
 export const paymentType = pgEnum('payment_type', ['bank', 'qris']);
+export const shippingMethod = pgEnum('shipping_method', ['courier', 'local', 'pickup']);
 
 export const paymentMethods = pgTable('payment_methods', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -213,13 +216,17 @@ export const orders = pgTable(
     buyerName: text('buyer_name').notNull(),
     buyerWhatsapp: text('buyer_whatsapp').notNull(),
     buyerEmail: text('buyer_email'),
-    provinceCode: text('province_code').notNull().references(() => regions.code),
-    cityCode: text('city_code').notNull().references(() => regions.code),
-    districtCode: text('district_code').notNull().references(() => regions.code),
-    provinceName: text('province_name').notNull(),
-    cityName: text('city_name').notNull(),
-    districtName: text('district_name').notNull(),
-    address: text('address').notNull(),
+    provinceCode: text('province_code').references(() => regions.code),
+    cityCode: text('city_code').references(() => regions.code),
+    districtCode: text('district_code').references(() => regions.code),
+    provinceName: text('province_name'),
+    cityName: text('city_name'),
+    districtName: text('district_name'),
+    address: text('address'),
+    shippingMethod: shippingMethod('shipping_method').notNull().default('courier'),
+    buyerLat: doublePrecision('buyer_lat'),
+    buyerLng: doublePrecision('buyer_lng'),
+    distanceKm: numeric('distance_km', { precision: 6, scale: 2 }),
     subtotal: integer('subtotal').notNull(),
     shippingFee: integer('shipping_fee').notNull(),
     uniqueCode: integer('unique_code').notNull(),
@@ -242,6 +249,7 @@ export const orders = pgTable(
     check('orders_unique_code_range', sql`${t.uniqueCode} between 1 and 999`),
     check('orders_total_sum', sql`${t.total} = ${t.subtotal} + ${t.shippingFee} + ${t.uniqueCode}`),
     check('orders_money_nonneg', sql`${t.subtotal} >= 0 and ${t.shippingFee} >= 0`),
+    check('orders_method_fields', sql`(${t.shippingMethod} = 'pickup') or (${t.shippingMethod} = 'local' and ${t.address} is not null and ${t.buyerLat} is not null and ${t.buyerLng} is not null) or (${t.shippingMethod} = 'courier' and ${t.address} is not null and ${t.provinceCode} is not null and ${t.cityCode} is not null and ${t.districtCode} is not null)`),
   ],
 );
 
@@ -286,3 +294,64 @@ export const notificationsLog = pgTable('notifications_log', {
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- M4: pengiriman mandiri, pickup, banner ----------
+// Koordinat toko PRIVAT: tabel ini tidak dapat dibaca pengunjung atau pembeli (hanya anggota toko dan fungsi app_store_location di server).
+export const storeLocations = pgTable(
+  'store_locations',
+  {
+    storeId: uuid('store_id').primaryKey().references(() => stores.id, { onDelete: 'cascade' }),
+    lat: doublePrecision('lat').notNull(),
+    lng: doublePrecision('lng').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check('store_locations_range', sql`${t.lat} between -90 and 90 and ${t.lng} between -180 and 180`)],
+);
+
+export const shippingLocalOptions = pgTable(
+  'shipping_local_options',
+  {
+    storeId: uuid('store_id').primaryKey().references(() => stores.id, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').notNull().default(false),
+    maxRadiusKm: numeric('max_radius_km', { precision: 5, scale: 2 }).notNull().default('10'),
+    correction: numeric('correction', { precision: 4, scale: 2 }).notNull().default('1.30'),
+  },
+  (t) => [check('local_options_range', sql`${t.maxRadiusKm} between 0.5 and 50 and ${t.correction} between 1 and 3`)],
+);
+
+export const shippingLocalTiers = pgTable(
+  'shipping_local_tiers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    storeId: uuid('store_id').notNull().references(() => stores.id, { onDelete: 'cascade' }),
+    upToKm: numeric('up_to_km', { precision: 5, scale: 2 }).notNull(),
+    price: integer('price').notNull(),
+  },
+  (t) => [
+    uniqueIndex('local_tiers_store_km_uq').on(t.storeId, t.upToKm),
+    check('local_tiers_valid', sql`${t.upToKm} > 0 and ${t.price} >= 0`),
+  ],
+);
+
+export const pickupSettings = pgTable('pickup_settings', {
+  storeId: uuid('store_id').primaryKey().references(() => stores.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  instructions: text('instructions'),
+});
+
+export const banners = pgTable(
+  'banners',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    storeId: uuid('store_id').notNull().references(() => stores.id, { onDelete: 'cascade' }),
+    imagePath: text('image_path').notNull(),
+    title: text('title'),
+    linkUrl: text('link_url'),
+    startsAt: timestamp('starts_at', { withTimezone: true }),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    active: boolean('active').notNull().default(true),
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('banners_store_idx').on(t.storeId, t.position)],
+);

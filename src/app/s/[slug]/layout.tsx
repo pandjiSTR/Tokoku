@@ -1,24 +1,39 @@
+import type { Metadata } from 'next';
+import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { cartCookieName, cartCount, parseCart } from '@/lib/cart';
 import { getPublicSocials, getStorefront } from '@/lib/tenant';
 import { SOCIAL_LABEL } from '@/lib/validation';
+import { imageUrl } from '@/lib/image-url';
+import { getStoreTheme } from '@/lib/storefront-theme';
+import { themeVars } from '@/lib/theme';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const store = await getStorefront((await params).slug);
+  return store.faviconPath ? { icons: { icon: imageUrl(store.faviconPath) } } : {};
+}
 
 export default async function StorefrontLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const store = await getStorefront(slug);
   const socials = await getPublicSocials(store.id);
+  const { theme, preview } = await getStoreTheme(store.id);
   const count = cartCount(parseCart((await cookies()).get(cartCookieName(slug))?.value));
   const waHref = store.whatsapp
     ? `https://wa.me/${store.whatsapp}?text=${encodeURIComponent(store.waGreeting || `Halo ${store.name}`)}`
     : null;
 
   return (
-    <div className="page theme-minimal">
+    <div className={`page theme-${theme.theme}`} style={themeVars(theme) as CSSProperties}>
+      {preview && <div className="preview-bar" role="status">Pratinjau tampilan. Belum dipublikasikan.</div>}
       <header className="topbar">
         <div className="topbar-inner store-bar">
           <Link href={`/s/${slug}`} className="brand">
-            <span className="brand-mark" aria-hidden="true">{store.name.slice(0, 2).toUpperCase()}</span>
+            {store.logoPath
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={imageUrl(store.logoPath)} alt="" className="brand-logo" />
+              : <span className="brand-mark" aria-hidden="true">{store.name.slice(0, 2).toUpperCase()}</span>}
             <span className="ellipsis">{store.name}</span>
           </Link>
           <span className="spacer" />

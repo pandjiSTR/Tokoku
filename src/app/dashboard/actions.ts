@@ -33,5 +33,5 @@ export async function createStore(formData: FormData) {
     ok = false;
   }
   if (!ok) redirect('/dashboard?error=Slug+sudah+dipakai+toko+lain.');
-  redirect(`/dashboard/${slug}`);
+  redirect(`/dashboard/${slug}/mulai`);
 }

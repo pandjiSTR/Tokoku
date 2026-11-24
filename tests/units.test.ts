@@ -156,3 +156,124 @@ describe('pesan notifikasi', () => {
     expect(buyerOrderCreated('K', o, 'http://x/s/k/pesanan/abc').text).toContain('http://x/s/k/pesanan/abc');
   });
 });
+
+import { effectiveDistanceKm, haversineKm, isValidCoord, resolveLocalFee } from '@/lib/geo';
+import { contrastRatio, DEFAULT_THEME, decodePreview, encodePreview, mix, parseThemeConfig, readableOn, themeVars } from '@/lib/theme';
+
+describe('geo: Haversine dan tarif berjenjang', () => {
+  it('jarak Monas - Gedung Sate sekitar 119 km, simetris, dan nol untuk titik sama', () => {
+    const d = haversineKm(-6.1754, 106.8272, -6.9025, 107.6186);
+    expect(d).toBeGreaterThan(115);
+    expect(d).toBeLessThan(123);
+    expect(haversineKm(-6.9025, 107.6186, -6.1754, 106.8272)).toBeCloseTo(d, 6);
+    expect(haversineKm(-6.2, 106.8, -6.2, 106.8)).toBe(0);
+  });
+  it('faktor koreksi 1,3 dan pembulatan', () => {
+    expect(effectiveDistanceKm(2, 1.3)).toBe(2.6);
+    expect(effectiveDistanceKm(7.6923, 1.3)).toBe(10);
+  });
+  const tiers = [{ upToKm: 10, price: 18000 }, { upToKm: 3, price: 8000 }, { upToKm: 6, price: 12000 }];
+  it('memilih tier pertama yang cukup (tier tidak harus berurutan)', () => {
+    expect(resolveLocalFee(0, tiers, 10)?.price).toBe(8000);
+    expect(resolveLocalFee(3, tiers, 10)?.price).toBe(8000);
+    expect(resolveLocalFee(3.01, tiers, 10)?.price).toBe(12000);
+    expect(resolveLocalFee(10, tiers, 10)?.price).toBe(18000);
+  });
+  it('menolak di luar radius maksimal, di luar tier terakhir, atau nilai tidak valid', () => {
+    expect(resolveLocalFee(10.01, tiers, 10)).toBeNull();
+    expect(resolveLocalFee(9, tiers, 8)).toBeNull();
+    expect(resolveLocalFee(8, [{ upToKm: 5, price: 1 }], 10)).toBeNull();
+    expect(resolveLocalFee(Number.NaN, tiers, 10)).toBeNull();
+  });
+  it('validasi koordinat: hanya wilayah Indonesia dan angka yang sah', () => {
+    expect(isValidCoord(-6.2, 106.8)).toBe(true);
+    expect(isValidCoord(0, 0)).toBe(false);
+    expect(isValidCoord('a', 1)).toBe(false);
+    expect(isValidCoord(Number.NaN, 106)).toBe(false);
+    expect(isValidCoord(48.8, 2.3)).toBe(false);
+  });
+});
+
+describe('tema toko', () => {
+  it('nilai rusak diganti bawaan dan bagian beranda selalu lengkap tanpa duplikat', () => {
+    const t = parseThemeConfig({ brand: 'merah', accent: '#ABCDEF', font: 'comic', sections: [{ id: 'about', visible: false }, { id: 'about' }, { id: 'hack' }] });
+    expect(t.brand).toBe(DEFAULT_THEME.brand);
+    expect(t.accent).toBe('#abcdef');
+    expect(t.font).toBe('jakarta');
+    expect(t.sections.map((s) => s.id)).toEqual(['about', 'banner', 'categories', 'featured_products', 'contact']);
+    expect(t.sections[0].visible).toBe(false);
+    expect(parseThemeConfig(null)).toEqual(DEFAULT_THEME);
+  });
+  it('teks dipilih otomatis agar terbaca', () => {
+    expect(readableOn('#ffffff')).toBe('#1f1b16');
+    expect(readableOn('#000000')).toBe('#ffffff');
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 0);
+    expect(contrastRatio(DEFAULT_THEME.brand, readableOn(DEFAULT_THEME.brand))).toBeGreaterThan(4.5);
+    expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080');
+  });
+  it('variabel CSS lengkap dan pratinjau dapat dienkode-dekode', () => {
+    const v = themeVars(DEFAULT_THEME);
+    for (const k of ['--brand', '--brand-hover', '--brand-soft', '--brand-contrast', '--brand-ink', '--accent', '--accent-ink', '--font']) expect(v[k]).toBeTruthy();
+    expect(decodePreview(encodePreview(DEFAULT_THEME))).toEqual(DEFAULT_THEME);
+    expect(decodePreview('bukan-base64-json')).toBeNull();
+    expect(decodePreview('a'.repeat(2000))).toBeNull();
+  });
+});
+
+import { parseWibInput, toWibInput } from '@/lib/format';
+describe('input waktu WIB', () => {
+  it('mengubah datetime-local WIB ke UTC dan sebaliknya', () => {
+    const d = parseWibInput('2026-11-08T14:30');
+    expect(d?.toISOString()).toBe('2026-11-08T07:30:00.000Z');
+    expect(toWibInput(d)).toBe('2026-11-08T14:30');
+  });
+  it('kosong menjadi null, format salah menjadi undefined', () => {
+    expect(parseWibInput('')).toBeNull();
+    expect(parseWibInput('besok')).toBeUndefined();
+    expect(toWibInput(null)).toBe('');
+  });
+});
+
+import { parseDecimal } from '@/lib/validation';
+describe('parseDecimal', () => {
+  it('menerima koma dan titik, menolak di luar rentang atau format salah', () => {
+    expect(parseDecimal('2,5', 0.5, 50)).toBe(2.5);
+    expect(parseDecimal('10', 0.5, 50)).toBe(10);
+    expect(parseDecimal('0,1', 0.5, 50)).toBeUndefined();
+    expect(parseDecimal('51', 0.5, 50)).toBeUndefined();
+    expect(parseDecimal('1.234', 0.5, 50)).toBeUndefined();
+    expect(parseDecimal('abc', 0.5, 50)).toBeUndefined();
+  });
+});
+
+describe('tema bawaan konsisten dengan pembaca konfigurasi', () => {
+  it('konfigurasi kosong atau bawaan yang disimpan dibaca kembali identik (tidak dianggap "sudah disesuaikan")', () => {
+    expect(parseThemeConfig({})).toEqual(DEFAULT_THEME);
+    expect(parseThemeConfig(DEFAULT_THEME)).toEqual(DEFAULT_THEME);
+    expect(parseThemeConfig({ brand: '#1F5C46' }).brand).toBe(DEFAULT_THEME.brand);
+  });
+});
+
+import { ensureInk, THEMES, validateTheme } from '@/lib/theme';
+describe('validasi kontras warna', () => {
+  it('warna bawaan lolos', () => expect(validateTheme(DEFAULT_THEME)).toBeNull());
+  it('warna utama terlalu terang ditolak (kuning pucat di atas putih)', () => {
+    expect(validateTheme({ brand: '#ffeb3b', accent: '#000000' })).toMatch(/terlalu terang/);
+    expect(validateTheme({ brand: '#ffffff', accent: '#000000' })).toMatch(/terlalu terang/);
+  });
+  it('aksen yang terlalu mirip warna utama ditolak', () => {
+    expect(validateTheme({ brand: '#1f5c46', accent: '#206048' })).toMatch(/mirip/);
+  });
+  it('warna gelap dan kontras lolos', () => expect(validateTheme({ brand: '#7a1f2b', accent: '#ffd166' })).toBeNull());
+  it('warna teks turunan selalu terbaca di atas putih (4,5:1)', () => {
+    for (const c of ['#1f5c46', '#ffeb3b', '#ff9800', '#9e9e9e', '#00bcd4', '#f6d58e', '#ffffff']) {
+      expect(contrastRatio(ensureInk(c), '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(ensureInk('#1f5c46')).toBe('#1f5c46');
+  });
+  it('tema dibaca dari konfigurasi dan jatuh ke bawaan jika asing', () => {
+    expect(THEMES).toContain('bold');
+    expect(parseThemeConfig({ theme: 'bold' }).theme).toBe('bold');
+    expect(parseThemeConfig({ theme: 'neon' }).theme).toBe('minimal');
+  });
+});

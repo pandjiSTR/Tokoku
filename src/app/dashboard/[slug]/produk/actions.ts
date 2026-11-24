@@ -10,6 +10,7 @@ import { toSlug } from '@/lib/slug';
 import { parseProductForm, isUuid } from '@/lib/product-form';
 import { compressImage, ImageError, MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES } from '@/lib/image';
 import { removeImages, uploadImage } from '@/lib/storage';
+import { rateGuard, TOO_MANY } from '@/lib/rate-limit';
 
 const enc = encodeURIComponent;
 
@@ -87,6 +88,7 @@ export async function uploadImages(slug: string, productId: string, formData: Fo
   const { user, store } = await getMyStore(slug);
   if (!isUuid(productId)) notFound();
   const back = `/dashboard/${slug}/produk/${productId}`;
+  if (!(await rateGuard('upload', 30, 600, user.id)).ok) redirect(`${back}?error=${enc(TOO_MANY)}`);
 
   const files = formData.getAll('images').filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) redirect(`${back}?error=${enc('Pilih gambar terlebih dahulu.')}`);

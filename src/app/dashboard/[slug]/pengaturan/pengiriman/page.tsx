@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { asUser } from '@/db';
-import { regions, shippingDefault, shippingGroupAreas, shippingGroups, shippingRates } from '@/db/schema';
+import { pickupSettings, regions, shippingDefault, shippingGroupAreas, shippingGroups, shippingRates } from '@/db/schema';
 import { getMyStore } from '@/lib/session';
 import { Alert } from '@/components/Alert';
 import { RegionPicker } from '@/components/RegionPicker';
 import {
-  addGroupArea, createGroup, deleteGroup, deleteRate, removeGroupArea, setDefaultRate, updateGroup, upsertRate,
+  addGroupArea, createGroup, deleteGroup, deleteRate, removeGroupArea, savePickup, setDefaultRate, updateGroup, upsertRate,
 } from './actions';
 
 export const metadata: Metadata = { title: 'Pengiriman' };
@@ -20,6 +20,7 @@ export default async function PengirimanPage({ params, searchParams }: {
   const { user, store } = await getMyStore(slug);
 
   const d = await asUser(user.id, async (tx) => ({
+    pickup: (await tx.select().from(pickupSettings).where(eq(pickupSettings.storeId, store.id)))[0] ?? null,
     def: (await tx.select().from(shippingDefault).where(eq(shippingDefault.storeId, store.id)))[0] ?? null,
     rates: await tx.select({ cityCode: shippingRates.cityCode, price: shippingRates.price, active: shippingRates.active, name: regions.name })
       .from(shippingRates).innerJoin(regions, eq(regions.code, shippingRates.cityCode))
@@ -71,6 +72,15 @@ export default async function PengirimanPage({ params, searchParams }: {
           <button type="submit" className="btn btn-block">Tambah tarif kota</button>
         </form>
       </section>
+
+      <form action={savePickup.bind(null, slug)} className="card stack">
+        <h2>Ambil di toko (pickup)</h2>
+        <p className="muted small">Pembeli mengambil pesanan sendiri. Ongkir Rp0 dan alamat pembeli tidak diminta.</p>
+        <div className="field"><label htmlFor="instructions">Instruksi pengambilan</label><input id="instructions" name="instructions" maxLength={300} defaultValue={d.pickup?.instructions ?? ''} placeholder="Ambil di Jl. Contoh 1, jam 09.00-17.00" /></div>
+        <label className="check-row"><input type="checkbox" name="enabled" defaultChecked={d.pickup?.enabled ?? false} /><span>Pickup aktif di checkout</span></label>
+        <button type="submit" className="btn btn-block">Simpan pickup</button>
+        <Link href={`/dashboard/${slug}/pengaturan/kurir-toko`} className="btn btn-ghost btn-block">Atur kurir toko (antar sendiri)</Link>
+      </form>
 
       <section className="stack" aria-labelledby="grup">
         <h2 id="grup">Grup tarif</h2>

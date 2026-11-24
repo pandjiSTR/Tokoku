@@ -9,11 +9,15 @@ export default async function Pengaturan({ params }: { params: Promise<{ slug: s
   await getMyStore(slug);
   const base = `/dashboard/${slug}/pengaturan`;
   const active = [
+    { href: `/dashboard/${slug}/mulai`, title: 'Panduan setup', text: 'Langkah demi langkah menyiapkan toko' },
+    { href: `${base}/tampilan`, title: 'Tampilan toko', text: 'Warna, font, logo, favicon, dan urutan beranda' },
+    { href: `${base}/banner`, title: 'Banner promosi', text: 'Poster beranda dengan jadwal tayang' },
     { href: `${base}/profil`, title: 'Profil toko', text: 'Nama, deskripsi, alamat, dan kota' },
     { href: `${base}/kontak`, title: 'Kontak dan WhatsApp', text: 'Nomor WhatsApp, email, dan pesan sapaan' },
     { href: `${base}/sosial`, title: 'Media sosial', text: 'Instagram, TikTok, dan tautan lain' },
     { href: `${base}/pembayaran`, title: 'Pembayaran', text: 'Rekening bank dan QRIS' },
-    { href: `${base}/pengiriman`, title: 'Pengiriman', text: 'Tarif ekspedisi per kota/kabupaten' },
+    { href: `${base}/pengiriman`, title: 'Pengiriman', text: 'Ekspedisi per kota, grup tarif, dan ambil di toko' },
+    { href: `${base}/kurir-toko`, title: 'Kurir toko', text: 'Pin lokasi toko dan tarif antar sendiri berdasarkan jarak' },
   ];
   const soon = ['Anggota tim'];
   return (

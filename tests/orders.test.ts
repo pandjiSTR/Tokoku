@@ -20,7 +20,7 @@ const PM_B = 'e0000000-0000-0000-0000-0000000000b1';
 
 let pg: PGlite;
 let db: ReturnType<typeof drizzle<typeof schema>>;
-let addr: CreateOrderInput['address'];
+let addr: NonNullable<CreateOrderInput['address']>;
 let seq = 0;
 
 const stockOf = async (id: string) => (await pg.query<{ stock: number }>(`select stock from products where id='${id}'`)).rows[0].stock;

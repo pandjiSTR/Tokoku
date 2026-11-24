@@ -9,9 +9,10 @@ import { forStore } from '@/lib/tenant';
 import { isUuid } from '@/lib/product-form';
 import { formatDateTime, formatRupiah, statusLabel } from '@/lib/format';
 import { signedProofUrl } from '@/lib/storage';
+import { addressLine, methodLabel } from '@/lib/order-display';
 import { Alert } from '@/components/Alert';
 import { OrderTimeline } from '@/components/OrderTimeline';
-import { acceptPayment, cancelOrder, markCompleted, markShipped, rejectPayment, startProcessing } from '../actions';
+import { acceptPayment, cancelOrder, markCompleted, markShipped, rejectPayment, startProcessing, updateShippingFee } from '../actions';
 
 export const metadata: Metadata = { title: 'Detail pesanan' };
 
@@ -116,10 +117,23 @@ export default async function OrderDetail({ params, searchParams }: {
       <section className="card stack">
         <h2>Pembeli</h2>
         <p>{order.buyerName}</p>
-        <p className="muted">{order.address}, {order.districtName}, {order.cityName}, {order.provinceName}</p>
+        <span className="badge" style={{ alignSelf: 'flex-start' }}>{methodLabel[order.shippingMethod]}{order.distanceKm ? ` · ${Number(order.distanceKm).toFixed(1)} km` : ''}</span>
+        {order.shippingMethod === 'pickup' ? <p className="muted">Diambil sendiri oleh pembeli di toko.</p> : <p className="muted">{addressLine(order)}</p>}
+        {order.buyerLat !== null && order.buyerLng !== null && (
+          <a href={`https://www.google.com/maps?q=${order.buyerLat},${order.buyerLng}`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-block">Buka titik pengantaran di peta</a>
+        )}
         {order.buyerEmail && <p className="muted small">{order.buyerEmail}</p>}
         <a href={wa(waText[order.status] ?? `Halo ${order.buyerName}, soal pesanan ${order.orderNumber}.`)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-block">Hubungi via WhatsApp</a>
       </section>
+
+      {order.status === 'pending_payment' && (
+        <form action={updateShippingFee.bind(null, slug, id)} className="card stack">
+          <h2>Ubah ongkir</h2>
+          <p className="muted small">Hanya bisa selama pesanan belum dibayar. Total pembeli ikut berubah, dan kode unik {order.uniqueCode} tetap dipakai.</p>
+          <div className="field"><label htmlFor="fee">Ongkir baru (Rp)</label><input id="fee" name="fee" inputMode="numeric" defaultValue={order.shippingFee} required /></div>
+          <button type="submit" className="btn btn-secondary btn-block">Simpan ongkir</button>
+        </form>
+      )}
 
       {(order.status === 'pending_payment' || order.status === 'awaiting_verification') && (
         <form action={cancelOrder.bind(null, slug, id)}><button type="submit" className="btn btn-ghost btn-block">Batalkan pesanan (stok dikembalikan)</button></form>

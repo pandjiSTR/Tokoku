@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { and, asc, count, eq, gte, inArray, sql } from 'drizzle-orm';
 import { asUser } from '@/db';
-import { orders, paymentMethods, products, shippingDefault, shippingRates, socialLinks } from '@/db/schema';
+import { orders } from '@/db/schema';
+import { loadSetupProgress } from '@/lib/setup-progress';
 import { getMyStore } from '@/lib/session';
 import { formatRupiah, startOfTodayWib } from '@/lib/format';
 
@@ -18,10 +19,7 @@ export default async function Ringkasan({ params }: { params: Promise<{ slug: st
     const sid = store.id;
     const n = async (q: Promise<{ n: number }[]>) => (await q)[0].n;
     return {
-      socials: await n(tx.select({ n: count() }).from(socialLinks).where(eq(socialLinks.storeId, sid))),
-      activeProducts: await n(tx.select({ n: count() }).from(products).where(and(eq(products.storeId, sid), eq(products.status, 'active')))),
-      methods: await n(tx.select({ n: count() }).from(paymentMethods).where(and(eq(paymentMethods.storeId, sid), eq(paymentMethods.active, true)))),
-      rates: (await n(tx.select({ n: count() }).from(shippingRates).where(eq(shippingRates.storeId, sid)))) + (await n(tx.select({ n: count() }).from(shippingDefault).where(eq(shippingDefault.storeId, sid)))),
+      steps: await loadSetupProgress(tx, store, slug),
       newToday: await n(tx.select({ n: count() }).from(orders).where(and(eq(orders.storeId, sid), gte(orders.createdAt, today)))),
       toVerify: await n(tx.select({ n: count() }).from(orders).where(and(eq(orders.storeId, sid), eq(orders.status, 'awaiting_verification')))),
       salesToday: (await tx.select({ s: sql<number>`coalesce(sum(${orders.total} - ${orders.uniqueCode}), 0)::int` }).from(orders)
@@ -31,15 +29,7 @@ export default async function Ringkasan({ params }: { params: Promise<{ slug: st
     };
   });
 
-  const base = `/dashboard/${slug}/pengaturan`;
-  const items = [
-    { label: 'Profil toko (deskripsi, alamat, kota)', done: !!(store.description && store.address && store.cityCode), href: `${base}/profil` },
-    { label: 'Kontak dan WhatsApp', done: !!store.whatsapp, href: `${base}/kontak` },
-    { label: 'Media sosial', done: d.socials > 0, href: `${base}/sosial` },
-    { label: 'Metode pembayaran', done: d.methods > 0, href: `${base}/pembayaran` },
-    { label: 'Tarif pengiriman', done: d.rates > 0, href: `${base}/pengiriman` },
-    { label: 'Produk aktif pertama', done: d.activeProducts > 0, href: `/dashboard/${slug}/produk` },
-  ];
+  const items = d.steps;
   const doneCount = items.filter((i) => i.done).length;
 
   return (
@@ -73,15 +63,16 @@ export default async function Ringkasan({ params }: { params: Promise<{ slug: st
         <div className="row"><h2 id="checklist">Kelengkapan toko</h2><span className="badge">{doneCount}/{items.length}</span></div>
         <ul className="checklist">
           {items.map((i) => (
-            <li key={i.label}>
+            <li key={i.key}>
               <span className={`check ${i.done ? 'done' : ''}`} aria-hidden="true">{i.done ? '✓' : ''}</span>
-              <span className="grow">{i.label}<span className="sr-only">{i.done ? ' (selesai)' : ' (belum)'}</span></span>
+              <span className="grow">{i.title}<span className="sr-only">{i.done ? ' (selesai)' : ' (belum)'}</span></span>
               {!i.done && <Link href={i.href} className="btn btn-secondary btn-sm">Lengkapi</Link>}
             </li>
           ))}
         </ul>
       </section>
 
+      <Link href={`/dashboard/${slug}/mulai`} className="btn btn-secondary btn-block">Buka panduan setup</Link>
       <p className="muted small">Link toko: <Link href={`/s/${slug}`}>/s/{slug}</Link></p>
     </main>
   );

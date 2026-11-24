@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { asAnon, asBuyer } from '@/db';
-import { paymentMethods, regions } from '@/db/schema';
+import { paymentMethods, pickupSettings, regions, shippingLocalOptions } from '@/db/schema';
+import { rowsOf } from '@/lib/pg';
 import { getStorefront } from '@/lib/tenant';
 import { loadCart } from '@/lib/cart-lines';
 import { Alert } from '@/components/Alert';
@@ -20,9 +21,15 @@ export default async function CheckoutPage({ params, searchParams }: {
   const cart = await loadCart(store.id, slug);
   if (!cart.valid) redirect(`/s/${slug}/keranjang`);
 
-  const [provinces, methods] = await Promise.all([
+  const [provinces, methods, ship] = await Promise.all([
     asAnon((tx) => tx.select({ code: regions.code, name: regions.name }).from(regions).where(eq(regions.level, 'province')).orderBy(asc(regions.name))),
     asBuyer(null, (tx) => tx.select().from(paymentMethods).where(eq(paymentMethods.storeId, store.id)).orderBy(asc(paymentMethods.createdAt))),
+    asBuyer(null, async (tx) => {
+      const [local] = await tx.select().from(shippingLocalOptions).where(eq(shippingLocalOptions.storeId, store.id)).limit(1);
+      const hasLoc = rowsOf<{ lat: number }>(await tx.execute(sql`select lat from app_store_location(${store.id}::uuid)`)).length > 0;
+      const [pickup] = await tx.select().from(pickupSettings).where(eq(pickupSettings.storeId, store.id)).limit(1);
+      return { local: !!local?.enabled && hasLoc, maxRadiusKm: Number(local?.maxRadiusKm ?? 10), pickup: !!pickup?.enabled, pickupInstructions: pickup?.instructions ?? null };
+    }),
   ]);
   const waHref = store.whatsapp ? `https://wa.me/${store.whatsapp}?text=${encodeURIComponent(`Halo ${store.name}, saya mau tanya pengiriman.`)}` : null;
 
@@ -43,6 +50,7 @@ export default async function CheckoutPage({ params, searchParams }: {
           provinces={provinces}
           subtotal={cart.subtotal}
           waHref={waHref}
+          shipping={{ courier: true, ...ship }}
           methods={methods.map((m) => ({
             id: m.id,
             label: m.type === 'qris' ? 'QRIS' : `Transfer ${m.bankName}`,

@@ -10,7 +10,7 @@ if (!url || !key) {
 
 const sb = createClient(url, key, { auth: { persistSession: false } });
 const buckets = [
-  { id: 'product-images', options: { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/webp'] } },
+  { id: 'product-images', options: { public: true, fileSizeLimit: 2 * 1024 * 1024, allowedMimeTypes: ['image/webp', 'image/png'] } },
   { id: 'payment-proofs', options: { public: false, fileSizeLimit: 3 * 1024 * 1024, allowedMimeTypes: ['image/webp'] } },
 ];
 

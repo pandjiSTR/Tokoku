@@ -9,6 +9,7 @@ import { forStore } from '@/lib/tenant';
 import { isUuid } from '@/lib/product-form';
 import { compressImage, ImageError, MAX_UPLOAD_BYTES } from '@/lib/image';
 import { removeImages, uploadImage } from '@/lib/storage';
+import { rateGuard, TOO_MANY } from '@/lib/rate-limit';
 
 const enc = encodeURIComponent;
 const MAX_METHODS = 5;
@@ -43,6 +44,7 @@ export async function addBank(slug: string, formData: FormData) {
 export async function addQris(slug: string, formData: FormData) {
   const { user, store } = await getMyStore(slug);
   const back = `/dashboard/${slug}/pengaturan/pembayaran`;
+  if (!(await rateGuard('upload', 30, 600, user.id)).ok) redirect(`${back}?error=${enc(TOO_MANY)}`);
   const file = formData.get('qris');
   if (!(file instanceof File) || file.size === 0) redirect(`${back}?error=${enc('Pilih gambar QRIS.')}`);
   if (file.size > MAX_UPLOAD_BYTES) redirect(`${back}?error=${enc('Ukuran gambar maksimal 5 MB.')}`);

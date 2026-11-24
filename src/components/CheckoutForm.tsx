@@ -1,10 +1,17 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatRupiah } from '@/lib/format';
+import { LocationPicker, type Point } from './LocationPicker';
 
 type Opt = { code: string; name: string };
-type Method = { id: string; label: string; detail: string };
-type Ship = { available: boolean; price?: number; label?: string } | null;
+type PayMethod = { id: string; label: string; detail: string };
+type Method = 'courier' | 'local' | 'pickup';
+type Quote = { available: boolean; price?: number; label?: string; distanceKm?: number; reason?: string } | null;
+
+const LOCAL_WHY: Record<string, string> = {
+  out_of_radius: 'Lokasi Anda di luar jangkauan kurir toko.', no_location: 'Toko belum mengatur lokasinya.',
+  disabled: 'Kurir toko tidak tersedia.', invalid: 'Titik lokasi tidak valid. Geser pin ke lokasi Anda.',
+};
 
 async function fetchRegions(parent: string): Promise<Opt[]> {
   const res = await fetch(`/api/regions?parent=${parent}`);
@@ -12,34 +19,65 @@ async function fetchRegions(parent: string): Promise<Opt[]> {
 }
 
 export function CheckoutForm(props: {
-  slug: string; action: (fd: FormData) => Promise<void>; provinces: Opt[]; methods: Method[]; subtotal: number; waHref: string | null;
+  slug: string; action: (fd: FormData) => Promise<void>; provinces: Opt[]; methods: PayMethod[]; subtotal: number; waHref: string | null;
+  shipping: { courier: boolean; local: boolean; maxRadiusKm: number; pickup: boolean; pickupInstructions: string | null };
 }) {
+  const available = (['courier', 'local', 'pickup'] as Method[]).filter((m) => props.shipping[m]);
+  const [method, setMethod] = useState<Method>(available[0] ?? 'courier');
   const [province, setProvince] = useState('');
   const [cities, setCities] = useState<Opt[]>([]);
   const [city, setCity] = useState('');
   const [districts, setDistricts] = useState<Opt[]>([]);
   const [district, setDistrict] = useState('');
-  const [ship, setShip] = useState<Ship>(null);
+  const [quote, setQuote] = useState<Quote>(null);
+  const [point, setPoint] = useState<Point | null>(null);
+  const [geoMsg, setGeoMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [method, setMethod] = useState(props.methods[0]?.id ?? '');
+  const [pay, setPay] = useState(props.methods[0]?.id ?? '');
+
+  function switchMethod(m: Method) { setMethod(m); setQuote(null); if (m === 'local' && point) setPoint({ ...point }); }
 
   async function onProvince(code: string) {
-    setProvince(code); setCity(''); setDistrict(''); setCities([]); setDistricts([]); setShip(null);
+    setProvince(code); setCity(''); setDistrict(''); setCities([]); setDistricts([]); setQuote(null);
     if (code) { setBusy(true); setCities(await fetchRegions(code)); setBusy(false); }
   }
   async function onCity(code: string) {
-    setCity(code); setDistrict(''); setDistricts([]); setShip(null);
+    setCity(code); setDistrict(''); setDistricts([]); setQuote(null);
     if (!code) return;
     setBusy(true);
     const [d, s] = await Promise.all([
       fetchRegions(code),
-      fetch(`/api/shipping?store=${props.slug}&city=${code}`).then((r) => (r.ok ? r.json() : { available: false })),
+      fetch(`/api/shipping?store=${props.slug}&method=courier&city=${code}`).then((r) => (r.ok ? r.json() : { available: false })),
     ]);
-    setDistricts(d); setShip(s); setBusy(false);
+    setDistricts(d); setQuote(s); setBusy(false);
   }
 
-  const canSubmit = !!district && !!ship?.available && !!method && !busy;
-  const fee = ship?.available ? ship.price ?? 0 : 0;
+  // Ongkir kurir toko dihitung server dari titik pin (koordinat toko tidak pernah dikirim ke browser).
+  useEffect(() => {
+    if (method !== 'local' || !point) return;
+    let stale = false;
+    const t = setTimeout(async () => {
+      setQuote(null);
+      const r = await fetch(`/api/shipping?store=${props.slug}&method=local&lat=${point.lat.toFixed(6)}&lng=${point.lng.toFixed(6)}`);
+      const q = r.ok ? await r.json() : { available: false, reason: 'invalid' };
+      if (!stale) setQuote(q);
+    }, 350);
+    return () => { stale = true; clearTimeout(t); };
+  }, [method, point, props.slug]);
+
+  function useMyLocation() {
+    setGeoMsg(null);
+    if (!navigator.geolocation) { setGeoMsg('Peramban tidak mendukung lokasi. Geser pin secara manual.'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => setPoint({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => setGeoMsg('Izin lokasi ditolak. Geser pin secara manual di peta.'),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  const fee = method === 'pickup' ? 0 : quote?.available ? quote.price ?? 0 : null;
+  const canSubmit = !!pay && !busy && (method === 'pickup' || (quote?.available && (method === 'local' ? !!point : !!district)));
+  const label: Record<Method, string> = { courier: 'Ekspedisi', local: 'Kurir toko', pickup: 'Ambil di toko' };
 
   return (
     <form action={props.action} className="stack">
@@ -54,52 +92,96 @@ export function CheckoutForm(props: {
       </section>
 
       <section className="card stack">
-        <h2>Alamat pengiriman</h2>
-        <div className="field">
-          <label htmlFor="provinceCode">Provinsi</label>
-          <select id="provinceCode" name="provinceCode" value={province} onChange={(e) => onProvince(e.target.value)} required>
-            <option value="">Pilih provinsi</option>
-            {props.provinces.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
-          </select>
+        <h2>Metode pengiriman</h2>
+        <div className="method-tabs" role="radiogroup" aria-label="Metode pengiriman">
+          {available.map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={method === m} className={`btn btn-sm ${method === m ? '' : 'btn-secondary'}`} onClick={() => switchMethod(m)}>
+              {label[m]}
+            </button>
+          ))}
         </div>
-        <div className="field">
-          <label htmlFor="cityCode">Kota/kabupaten</label>
-          <select id="cityCode" name="cityCode" value={city} onChange={(e) => onCity(e.target.value)} disabled={!province} required>
-            <option value="">Pilih kota/kabupaten</option>
-            {cities.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="districtCode">Kecamatan</label>
-          <select id="districtCode" name="districtCode" value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!city} required>
-            <option value="">Pilih kecamatan</option>
-            {districts.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="address">Alamat lengkap</label>
-          <textarea id="address" name="address" rows={3} required minLength={8} maxLength={300} placeholder="Jalan, nomor rumah, RT/RW, patokan" />
-        </div>
+        <input type="hidden" name="shippingMethod" value={method} />
+        {method === 'local' && point && (<><input type="hidden" name="lat" value={point.lat} /><input type="hidden" name="lng" value={point.lng} /></>)}
       </section>
 
-      <section className="card stack" aria-live="polite">
-        <h2>Pengiriman</h2>
-        {!city && <p className="muted">Pilih kota/kabupaten untuk melihat ongkir.</p>}
-        {city && ship === null && <p className="muted">Memuat ongkir...</p>}
-        {ship?.available && <div className="row"><span>Ekspedisi ({ship.label})</span><strong>{formatRupiah(ship.price ?? 0)}</strong></div>}
-        {ship && !ship.available && (
-          <div className="stack">
-            <p className="error">Toko belum melayani pengiriman ke kota ini.</p>
-            {props.waHref && <a href={props.waHref} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Tanya pengiriman via WhatsApp</a>}
+      {method === 'courier' && (
+        <section className="card stack">
+          <h2>Alamat pengiriman</h2>
+          <div className="field">
+            <label htmlFor="provinceCode">Provinsi</label>
+            <select id="provinceCode" name="provinceCode" value={province} onChange={(e) => onProvince(e.target.value)} required>
+              <option value="">Pilih provinsi</option>
+              {props.provinces.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+            </select>
           </div>
-        )}
-      </section>
+          <div className="field">
+            <label htmlFor="cityCode">Kota/kabupaten</label>
+            <select id="cityCode" name="cityCode" value={city} onChange={(e) => onCity(e.target.value)} disabled={!province} required>
+              <option value="">Pilih kota/kabupaten</option>
+              {cities.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="districtCode">Kecamatan</label>
+            <select id="districtCode" name="districtCode" value={district} onChange={(e) => setDistrict(e.target.value)} disabled={!city} required>
+              <option value="">Pilih kecamatan</option>
+              {districts.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="address">Alamat lengkap</label>
+            <textarea id="address" name="address" rows={3} required minLength={8} maxLength={300} placeholder="Jalan, nomor rumah, RT/RW, patokan" />
+          </div>
+        </section>
+      )}
+
+      {method === 'local' && (
+        <section className="card stack">
+          <h2>Lokasi pengantaran</h2>
+          <p className="muted small">Geser pin atau ketuk peta di lokasi rumah Anda. Jangkauan kurir toko maksimal {props.shipping.maxRadiusKm} km.</p>
+          <button type="button" className="btn btn-secondary" onClick={useMyLocation}>Gunakan lokasi saya</button>
+          {geoMsg && <p className="error small" role="alert">{geoMsg}</p>}
+          <LocationPicker value={point} onChange={setPoint} height={280} />
+          <div className="field">
+            <label htmlFor="address">Alamat lengkap</label>
+            <textarea id="address" name="address" rows={3} required minLength={8} maxLength={300} placeholder="Jalan, nomor rumah, RT/RW, patokan" />
+          </div>
+        </section>
+      )}
+
+      {method === 'pickup' && (
+        <section className="card stack">
+          <h2>Ambil di toko</h2>
+          <p className="muted">{props.shipping.pickupInstructions || 'Pesanan dapat diambil di toko setelah pembayaran diverifikasi.'}</p>
+        </section>
+      )}
+
+      {method !== 'pickup' && (
+        <section className="card stack" aria-live="polite">
+          <h2>Ongkir</h2>
+          {method === 'courier' && !city && <p className="muted">Pilih kota/kabupaten untuk melihat ongkir.</p>}
+          {method === 'local' && !point && <p className="muted">Tentukan lokasi pengantaran di peta.</p>}
+          {((method === 'courier' && city) || (method === 'local' && point)) && quote === null && <p className="muted">Menghitung ongkir...</p>}
+          {quote?.available && (
+            <div className="row">
+              <span>{method === 'local' ? `Kurir toko (${(quote.distanceKm ?? 0).toFixed(1)} km)` : `Ekspedisi (${quote.label})`}</span>
+              <strong>{formatRupiah(quote.price ?? 0)}</strong>
+            </div>
+          )}
+          {quote && !quote.available && (
+            <div className="stack">
+              <p className="error">{method === 'local' ? LOCAL_WHY[quote.reason ?? 'invalid'] : 'Toko belum melayani pengiriman ke kota ini.'}</p>
+              {props.waHref && <a href={props.waHref} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Tanya pengiriman via WhatsApp</a>}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="card stack">
         <h2>Pembayaran</h2>
         {props.methods.map((m) => (
-          <label key={m.id} className={`option ${method === m.id ? 'selected' : ''}`}>
-            <input type="radio" name="paymentMethodId" value={m.id} checked={method === m.id} onChange={() => setMethod(m.id)} />
+          <label key={m.id} className={`option ${pay === m.id ? 'selected' : ''}`}>
+            <input type="radio" name="paymentMethodId" value={m.id} checked={pay === m.id} onChange={() => setPay(m.id)} />
             <span className="grow"><strong>{m.label}</strong><span className="muted small" style={{ display: 'block' }}>{m.detail}</span></span>
           </label>
         ))}
@@ -107,7 +189,7 @@ export function CheckoutForm(props: {
 
       <section className="card stack">
         <div className="row"><span className="muted">Subtotal</span><span>{formatRupiah(props.subtotal)}</span></div>
-        <div className="row"><span className="muted">Ongkir</span><span>{ship?.available ? formatRupiah(fee) : '-'}</span></div>
+        <div className="row"><span className="muted">Ongkir</span><span>{fee === null ? '-' : formatRupiah(fee)}</span></div>
         <p className="hint">Kode unik 3 digit ditambahkan ke total setelah pesanan dibuat, untuk memudahkan pencocokan transfer.</p>
         <button type="submit" className="btn btn-block" disabled={!canSubmit}>Buat pesanan</button>
       </section>

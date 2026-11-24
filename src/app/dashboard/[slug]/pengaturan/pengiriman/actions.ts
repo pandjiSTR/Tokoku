@@ -2,7 +2,7 @@
 import { redirect, notFound } from 'next/navigation';
 import { and, eq } from 'drizzle-orm';
 import { asUser, type Tx } from '@/db';
-import { regions, shippingDefault, shippingGroupAreas, shippingGroups, shippingRates } from '@/db/schema';
+import { pickupSettings, regions, shippingDefault, shippingGroupAreas, shippingGroups, shippingRates } from '@/db/schema';
 import { getMyStore } from '@/lib/session';
 import { forStore } from '@/lib/tenant';
 import { isUuid } from '@/lib/product-form';
@@ -107,5 +107,17 @@ export async function removeGroupArea(slug: string, cityCode: string) {
   if (!/^\d{2}\.\d{2}$/.test(cityCode)) notFound();
   await run(user.id, `/dashboard/${slug}/pengaturan/pengiriman`, async (tx) => {
     await tx.delete(shippingGroupAreas).where(forStore(shippingGroupAreas.storeId, store.id, eq(shippingGroupAreas.cityCode, cityCode)));
+  });
+}
+
+export async function savePickup(slug: string, fd: FormData) {
+  const { user, store } = await getMyStore(slug);
+  const back = `/dashboard/${slug}/pengaturan/pengiriman`;
+  const instructions = String(fd.get('instructions') ?? '').trim();
+  if (instructions.length > 300) redirect(`${back}?error=${enc('Instruksi maksimal 300 karakter.')}`);
+  const enabled = fd.get('enabled') === 'on';
+  await run(user.id, back, async (tx) => {
+    await tx.insert(pickupSettings).values({ storeId: store.id, enabled, instructions: instructions || null })
+      .onConflictDoUpdate({ target: pickupSettings.storeId, set: { enabled, instructions: instructions || null } });
   });
 }

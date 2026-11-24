@@ -8,6 +8,7 @@ import { getStorefront } from '@/lib/tenant';
 import { hashToken, TOKEN_RE } from '@/lib/orders';
 import { formatDateTime, formatRupiah } from '@/lib/format';
 import { imageUrl } from '@/lib/image-url';
+import { addressLine, methodLabel } from '@/lib/order-display';
 import { Alert } from '@/components/Alert';
 import { CopyButton } from '@/components/CopyButton';
 import { OrderTimeline } from '@/components/OrderTimeline';
@@ -116,9 +117,14 @@ export default async function OrderPage({ params, searchParams }: {
       </section>
 
       <section className="card stack">
-        <h2>Pengiriman ke</h2>
+        <h2>{order.shippingMethod === 'pickup' ? 'Pengambilan' : 'Pengiriman ke'}</h2>
         <p>{order.buyerName} ({order.buyerWhatsapp})</p>
-        <p className="muted">{order.address}, {order.districtName}, {order.cityName}, {order.provinceName}</p>
+        <span className="badge" style={{ alignSelf: 'flex-start' }}>{methodLabel[order.shippingMethod]}{order.distanceKm ? ` · ${Number(order.distanceKm).toFixed(1)} km` : ''}</span>
+        {order.shippingMethod === 'pickup' ? (
+          <p className="muted">{(order.shippingSnapshot as { instructions?: string | null }).instructions || 'Ambil pesanan di toko setelah pembayaran diverifikasi.'}{store.address ? ` Alamat toko: ${store.address}.` : ''}</p>
+        ) : (
+          <p className="muted">{addressLine(order)}</p>
+        )}
       </section>
 
       <div className="stack">

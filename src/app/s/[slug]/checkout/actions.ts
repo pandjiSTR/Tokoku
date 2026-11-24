@@ -9,27 +9,34 @@ import { getStorefront } from '@/lib/tenant';
 import { normalizeWhatsapp } from '@/lib/validation';
 import { buyerOrderCreated, ownerNewOrder } from '@/lib/messages';
 import { appUrl, notify } from '@/lib/notify';
+import { rateGuard, TOO_MANY } from '@/lib/rate-limit';
 
 const schema = z.object({
   name: z.string().trim().min(2).max(80),
   whatsapp: z.string().trim().max(30),
   email: z.string().trim().max(120).default(''),
-  provinceCode: z.string().regex(/^\d{2}$/),
-  cityCode: z.string().regex(/^\d{2}\.\d{2}$/),
-  districtCode: z.string().regex(/^\d{2}\.\d{2}\.\d{2}$/),
-  address: z.string().trim().min(8).max(300),
   paymentMethodId: z.string().uuid(),
+  shippingMethod: z.enum(['courier', 'local', 'pickup']).default('courier'),
+  provinceCode: z.string().regex(/^\d{2}$/).optional(),
+  cityCode: z.string().regex(/^\d{2}\.\d{2}$/).optional(),
+  districtCode: z.string().regex(/^\d{2}\.\d{2}\.\d{2}$/).optional(),
+  address: z.string().trim().max(300).default(''),
+  lat: z.coerce.number().optional(),
+  lng: z.coerce.number().optional(),
 });
 
 export async function placeOrder(slug: string, formData: FormData) {
   const store = await getStorefront(slug);
   const back = (msg: string) => `/s/${slug}/checkout?error=${encodeURIComponent(msg)}`;
+  // Per klien, dan batas global per toko (tetap melindungi jika header IP tidak dipercaya)
+  if (!(await rateGuard('checkout', 10, 600)).ok || !(await rateGuard('checkout-store', 60, 600, store.id)).ok) redirect(back(TOO_MANY));
 
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(back('Periksa kembali isian Anda. Semua kolom bertanda wajib diisi.'));
   const v = parsed.data;
   const whatsapp = normalizeWhatsapp(v.whatsapp);
   if (!whatsapp) redirect(back('Nomor WhatsApp tidak valid. Contoh: 081234567890.'));
+  if (v.shippingMethod === 'courier' && (!v.provinceCode || !v.cityCode || !v.districtCode || v.address.length < 8)) redirect(back('Lengkapi alamat pengiriman.'));
   if (v.email && !z.string().email().safeParse(v.email).success) redirect(back('Format email tidak valid.'));
 
   const jar = await cookies();
@@ -42,7 +49,8 @@ export async function placeOrder(slug: string, formData: FormData) {
     result = await asBuyer(hash, (tx) => createOrder(tx, {
       storeId: store.id, items, tokenHash: hash, paymentMethodId: v.paymentMethodId,
       buyer: { name: v.name, whatsapp, email: v.email || null },
-      address: { provinceCode: v.provinceCode, cityCode: v.cityCode, districtCode: v.districtCode, text: v.address },
+      address: v.shippingMethod === 'pickup' ? null : { provinceCode: v.provinceCode, cityCode: v.cityCode, districtCode: v.districtCode, text: v.address },
+      shipping: { method: v.shippingMethod, lat: v.lat, lng: v.lng },
     }));
   } catch (e) {
     failure = e instanceof OrderError ? e.message : 'Pesanan gagal dibuat. Coba lagi.';

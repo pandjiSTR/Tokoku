@@ -9,6 +9,7 @@ import { hashToken, TOKEN_RE } from '@/lib/orders';
 import { ownerProofUploaded } from '@/lib/messages';
 import { appUrl, notify } from '@/lib/notify';
 import { getStorefront } from '@/lib/tenant';
+import { rateGuard, TOO_MANY } from '@/lib/rate-limit';
 import { removeProofs, uploadProof } from '@/lib/storage';
 
 const enc = encodeURIComponent;
@@ -19,6 +20,7 @@ export async function submitProof(slug: string, token: string, formData: FormDat
   if (!TOKEN_RE.test(token)) notFound();
   const hash = hashToken(token);
   const back = `/s/${slug}/pesanan/${token}`;
+  if (!(await rateGuard('proof', 10, 600)).ok || !(await rateGuard('proof-store', 60, 600, store.id)).ok) redirect(`${back}?error=${enc(TOO_MANY)}`);
 
   const senderName = String(formData.get('senderName') ?? '').trim();
   const bankName = String(formData.get('bankName') ?? '').trim();
